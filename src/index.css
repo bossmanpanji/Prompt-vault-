@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-canvas: #faf9f5;
+    --bg-surface: #ffffff;
+    --bg-surface-subtle: #f3f1eb;
+    --border-subtle: #e5e3da;
+    --border-hover: #d2cfc4;
+    --text-primary: #1f1e1d;
+    --text-secondary: #57554f;
+    --text-muted: #84817a;
+    --accent-terracotta: #cc785c;
+    --accent-terracotta-hover: #b5674c;
+    --accent-terracotta-subtle: #faece7;
+  }
+
+  .dark {
+    --bg-canvas: #181716;
+    --bg-surface: #22211f;
+    --bg-surface-subtle: #2d2b28;
+    --border-subtle: #363430;
+    --border-hover: #4a4742;
+    --text-primary: #f0eee6;
+    --text-secondary: #bab6ab;
+    --text-muted: #858279;
+    --accent-terracotta: #da7756;
+    --accent-terracotta-hover: #e58767;
+    --accent-terracotta-subtle: #38251e;
+  }
+
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+  }
+}
+
+.font-serif-claude {
+  font-family: 'Lora', Georgia, serif;
+}
+
+.font-mono-code {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* Custom scrollbars matching Claude's warm subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(132, 129, 122, 0.25);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(132, 129, 122, 0.45);
+}

@@ -466,6 +466,21 @@ export default function App() {
     );
   }
 
+  // If user is unauthenticated or on /login, render the dedicated Login view
+  if (!user || currentPath === '/login') {
+    return (
+      <div className="min-h-screen w-full bg-[#faf9f5] dark:bg-[#181716] flex items-center justify-center p-4">
+        <LoginModal
+          isOpen={true}
+          onClose={() => {}}
+          onLoginSuccess={handleLoginSuccess}
+          canClose={false}
+        />
+        <ToastContainer toasts={toasts} onDismiss={dismissToast} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#faf9f5] dark:bg-[#181716] text-[#1f1e1d] dark:text-[#f0eee6]">
       {/* Claude Style Left Sidebar */}

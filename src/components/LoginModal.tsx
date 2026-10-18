@@ -48,11 +48,25 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose, canClose]);
 
-  // Reset form when opened
+  // Read URL search params on mount (for ?signup=success&email=...)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const signupParam = params.get('signup');
+    const emailParam = params.get('email');
+
+    if (signupParam === 'success' || emailParam) {
+      setTab('signin');
+      if (emailParam) {
+        setEmail(decodeURIComponent(emailParam));
+      }
+      setSuccessNotice("Your account has been created. Please check your email and verify your address before logging in.");
+    }
+  }, []);
+
+  // Reset errors when opened, without overwriting pre-filled email from signup
   useEffect(() => {
     if (isOpen) {
       setErrorMessage(null);
-      setSuccessNotice(null);
       setIsLoading(false);
     }
   }, [isOpen]);
@@ -83,9 +97,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
     try {
       if (tab === 'signup') {
-        // 1) For Sign Up: Use supabase.auth.signUp({ email, password })
-        const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
+        const submittedEmail = email.trim().toLowerCase();
+
+        // 1) For Sign Up: supabase.auth.signUp({ email, password })
+        const { error } = await supabase.auth.signUp({
+          email: submittedEmail,
           password: password,
           options: {
             data: {
@@ -94,7 +110,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           },
         });
 
-        // 4) If Supabase returns an error, show small error message under the form
+        // Basic error handling if signup fails
         if (error) {
           setErrorMessage(error.message);
           setSuccessNotice(null);
@@ -102,39 +118,21 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           return;
         }
 
-        // * After signUp(), if data.session is null, don’t redirect to the dashboard.
-        // * Just show: "Check your email and confirm your account before logging in."
-        if (!data.session) {
-          setIsLoading(false);
-          setErrorMessage(null);
-          setSuccessNotice("Check your email and confirm your account before logging in.");
-          setTab('signin');
-          return;
-        }
-
-        // * Only redirect when a real session exists after login.
-        const authUser = data.user;
-        const displayName = name.trim() || authUser?.user_metadata?.full_name || email.split('@')[0];
-
-        const newUser: UserProfile = {
-          id: authUser?.id || 'usr_' + Date.now().toString(36),
-          name: displayName,
-          email: email.trim().toLowerCase(),
-          provider: 'email',
-          createdAt: authUser?.created_at || new Date().toISOString(),
-        };
-
+        // 1) After a successful Supabase signUp({ email, password }):
+        // - Do NOT auto-login.
+        // - Redirect the user to the Sign In page.
+        // - Keep / pre-fill the email they just used for signup in the Sign In form.
         setIsLoading(false);
-        onLoginSuccess(
-          newUser,
-          `Akun berhasil didaftarkan! Selamat datang, ${displayName}.`
-        );
-        onClose();
+        setPassword(''); // Clear password field for clean sign in
+        setEmail(submittedEmail); // Pre-fill email
+        setErrorMessage(null);
+        setSuccessNotice("Your account has been created. Please check your email and verify your address before logging in.");
+        setTab('signin');
 
-        if (window.location.pathname !== '/') {
-          window.history.pushState({}, '', '/');
-          window.dispatchEvent(new PopStateEvent('popstate'));
-        }
+        // Pass email via query parameter so it survives page reloads
+        const newUrl = `/login?signup=success&email=${encodeURIComponent(submittedEmail)}`;
+        window.history.pushState({ signupSuccess: true, email: submittedEmail }, '', newUrl);
+        return;
       } else {
         // 2) For Sign In: Use supabase.auth.signInWithPassword({ email, password })
         const { data, error } = await supabase.auth.signInWithPassword({
@@ -142,7 +140,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           password: password,
         });
 
-        // 4) If Supabase returns an error, show small error message under the form
+        // Error handling if sign in fails
         if (error) {
           setErrorMessage(error.message);
           setSuccessNotice(null);
@@ -150,9 +148,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           return;
         }
 
-        // * Only redirect when a real session exists after login.
+        // Only redirect when a real session exists after login
         if (!data.session) {
-          setErrorMessage("Check your email and confirm your account before logging in.");
+          setErrorMessage("Please verify your email address before logging in.");
           setSuccessNotice(null);
           setIsLoading(false);
           return;
@@ -175,8 +173,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         onLoginSuccess(loggedUser, `Selamat datang kembali, ${displayName}!`);
         onClose();
 
-        // 3) Only redirect when a real session exists after login.
-        if (window.location.pathname !== '/') {
+        // Clear signup query parameters on successful login and redirect to '/'
+        if (window.location.pathname !== '/' || window.location.search) {
           window.history.pushState({}, '', '/');
           window.dispatchEvent(new PopStateEvent('popstate'));
         }
@@ -323,6 +321,22 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </button>
           </div>
 
+          {/* Success Message ABOVE the form on Sign In */}
+          {tab === 'signin' && successNotice && (
+            <div className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-200 text-xs flex items-start gap-2.5 animate-in fade-in">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <span className="font-medium leading-relaxed">{successNotice}</span>
+            </div>
+          )}
+
+          {/* Error Message ABOVE the form */}
+          {errorMessage && (
+            <div className="mb-4 p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2 animate-in fade-in">
+              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-3.5">
             {tab === 'signup' && (
@@ -425,22 +439,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 </>
               )}
             </button>
-
-            {/* Success Notice / Email Confirmation Message under form */}
-            {successNotice && (
-              <div className="mt-2.5 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-200 text-xs flex items-start gap-2.5 animate-in fade-in">
-                <CheckCircle2 className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                <span className="font-medium leading-relaxed">{successNotice}</span>
-              </div>
-            )}
-
-            {/* Error Message under form */}
-            {errorMessage && (
-              <div className="mt-2.5 p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2 animate-in fade-in">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
           </form>
 
           {/* Privacy & Security note */}

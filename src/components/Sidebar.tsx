@@ -17,9 +17,12 @@ import {
   ChevronDown,
   ChevronRight,
   Database,
-  X
+  X,
+  LogIn,
+  LogOut,
+  User as UserIcon
 } from 'lucide-react';
-import { Project, PromptItem, ViewFilter } from '../types';
+import { Project, PromptItem, ViewFilter, UserProfile } from '../types';
 
 interface SidebarProps {
   projects: Project[];
@@ -42,6 +45,9 @@ interface SidebarProps {
   onExportMarkdown: () => void;
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
+  user?: UserProfile | null;
+  onOpenLogin?: () => void;
+  onLogout?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -65,6 +71,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onExportMarkdown,
   isDarkMode,
   onToggleDarkMode,
+  user,
+  onOpenLogin,
+  onLogout,
 }) => {
   const [projectMenuOpen, setProjectMenuOpen] = useState<string | null>(null);
   const [tagsCollapsed, setTagsCollapsed] = useState(false);
@@ -440,6 +449,56 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
               </button>
             </div>
+          )}
+        </div>
+        {/* User Account / Login Section */}
+        <div className="pt-1 border-t border-[#e5e3da]/60 dark:border-[#33312c]">
+          {user ? (
+            <div className="flex items-center justify-between p-2 rounded-xl bg-white dark:bg-[#22211f] border border-[#e5e3da] dark:border-[#363430]">
+              <div className="flex items-center gap-2 min-w-0">
+                {user.avatarUrl ? (
+                  <img
+                    src={user.avatarUrl}
+                    alt={user.name}
+                    className="w-7 h-7 rounded-full object-cover border border-[#cc785c]/40"
+                  />
+                ) : (
+                  <div className="w-7 h-7 rounded-full bg-[#faece7] dark:bg-[#38251e] text-[#cc785c] dark:text-[#e58767] text-xs font-bold flex items-center justify-center shrink-0">
+                    {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-[#1f1e1d] dark:text-[#f0eee6] truncate">
+                    {user.name}
+                  </div>
+                  <div className="text-[10px] text-[#84817a] truncate">
+                    {user.email}
+                  </div>
+                </div>
+              </div>
+              {onLogout && (
+                <button
+                  type="button"
+                  onClick={onLogout}
+                  title="Keluar dari akun"
+                  className="p-1.5 rounded-lg text-[#84817a] hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors cursor-pointer"
+                  aria-label="Logout"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          ) : (
+            onOpenLogin && (
+              <button
+                type="button"
+                onClick={() => handleMobileNav(onOpenLogin)}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-[#cc785c] dark:text-[#e58767] bg-[#faece7]/80 hover:bg-[#faece7] dark:bg-[#38251e]/60 dark:hover:bg-[#38251e] border border-[#cc785c]/35 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Masuk ke Akun</span>
+              </button>
+            )
           )}
         </div>
       </div>

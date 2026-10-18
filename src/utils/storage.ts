@@ -1,4 +1,4 @@
-import { Project, PromptItem } from '../types';
+import { Project, PromptItem, UserProfile } from '../types';
 import { INITIAL_PROJECTS, INITIAL_PROMPTS } from '../data/initialData';
 import { extractVariables } from './variableDetector';
 
@@ -6,6 +6,7 @@ const STORAGE_KEYS = {
   PROJECTS: 'promptvault_projects_v1',
   PROMPTS: 'promptvault_prompts_v1',
   THEME: 'promptvault_theme_v1',
+  USER: 'promptvault_user_v1',
 };
 
 export function loadProjects(): Project[] {
@@ -51,6 +52,33 @@ export function savePrompts(prompts: PromptItem[]): void {
     localStorage.setItem(STORAGE_KEYS.PROMPTS, JSON.stringify(prompts));
   } catch (e) {
     console.error('Failed to save prompts', e);
+  }
+}
+
+export function loadUser(): UserProfile | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.USER);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch (e) {
+    console.error('Failed to load user session', e);
+    return null;
+  }
+}
+
+export function saveUser(user: UserProfile): void {
+  try {
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(user));
+  } catch (e) {
+    console.error('Failed to save user session', e);
+  }
+}
+
+export function clearUser(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.USER);
+  } catch (e) {
+    console.error('Failed to clear user session', e);
   }
 }
 

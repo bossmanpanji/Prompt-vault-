@@ -54,3 +54,12 @@ export interface FilterState {
   sortBy: 'updatedAt' | 'copyCount' | 'title' | 'createdAt';
   sortOrder: 'asc' | 'desc';
 }
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  provider: 'email' | 'google' | 'github' | 'guest';
+  createdAt: string;
+}

@@ -10,9 +10,13 @@ import {
   Star, 
   FileText,
   SlidersHorizontal,
-  Menu
+  Menu,
+  LogIn,
+  ChevronDown,
+  User as UserIcon
 } from 'lucide-react';
-import { Project, PromptCategory, ViewFilter } from '../types';
+import { Project, PromptCategory, ViewFilter, UserProfile } from '../types';
+import { UserMenuPopup } from './UserMenuPopup';
 
 interface HeaderProps {
   searchQuery: string;
@@ -28,6 +32,12 @@ interface HeaderProps {
   onNewPrompt: () => void;
   onOpenUpload: () => void;
   onToggleSidebar: () => void;
+  user: UserProfile | null;
+  onOpenLogin: () => void;
+  onLogout: () => void;
+  onExportData: () => void;
+  totalPrompts: number;
+  totalProjects: number;
 }
 
 const CATEGORIES: PromptCategory[] = [
@@ -55,7 +65,14 @@ export const Header: React.FC<HeaderProps> = ({
   onNewPrompt,
   onOpenUpload,
   onToggleSidebar,
+  user,
+  onOpenLogin,
+  onLogout,
+  onExportData,
+  totalPrompts,
+  totalProjects,
 }) => {
+  const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Keyboard shortcut listener for search focus ('/' or 'Cmd+K')
@@ -180,6 +197,56 @@ export const Header: React.FC<HeaderProps> = ({
             <Plus className="w-3.5 h-3.5" />
             <span>Prompt Baru</span>
           </button>
+
+          {/* User Account / Login Button */}
+          <div className="relative pl-1 border-l border-[#e5e3da] dark:border-[#363430]">
+            {user ? (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-[#e5e3da] dark:border-[#363430] bg-white dark:bg-[#22211f] hover:bg-[#f3f1eb] dark:hover:bg-[#2a2926] text-xs font-medium text-[#1f1e1d] dark:text-[#f0eee6] transition-colors cursor-pointer shadow-xs"
+                  aria-label="Menu Akun Pengguna"
+                >
+                  {user.avatarUrl ? (
+                    <img 
+                      src={user.avatarUrl} 
+                      alt={user.name} 
+                      className="w-5 h-5 rounded-full object-cover border border-[#cc785c]/40" 
+                    />
+                  ) : (
+                    <div className="w-5 h-5 rounded-full bg-[#faece7] dark:bg-[#38251e] text-[#cc785c] dark:text-[#e58767] text-[10px] font-bold flex items-center justify-center shrink-0">
+                      {user.name ? user.name.charAt(0).toUpperCase() : 'U'}
+                    </div>
+                  )}
+                  <span className="max-w-[90px] sm:max-w-[120px] truncate hidden sm:inline">
+                    {user.name}
+                  </span>
+                  <ChevronDown className="w-3 h-3 text-[#84817a]" />
+                </button>
+
+                <UserMenuPopup
+                  user={user}
+                  isOpen={isUserMenuOpen}
+                  onClose={() => setIsUserMenuOpen(false)}
+                  onLogout={onLogout}
+                  onSwitchAccount={onOpenLogin}
+                  onExportData={onExportData}
+                  totalPrompts={totalPrompts}
+                  totalProjects={totalProjects}
+                />
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={onOpenLogin}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#cc785c] dark:text-[#e58767] hover:text-[#b5674c] bg-[#faece7]/80 hover:bg-[#faece7] dark:bg-[#38251e]/60 dark:hover:bg-[#38251e] border border-[#cc785c]/35 rounded-lg transition-all cursor-pointer shadow-xs active:scale-[0.98]"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Masuk</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

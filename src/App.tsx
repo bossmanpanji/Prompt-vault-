@@ -4,10 +4,13 @@ import {
   saveProjects, 
   loadPrompts, 
   savePrompts, 
+  loadUser,
+  saveUser,
+  clearUser,
   exportBackupJSON, 
   exportPromptsMarkdown 
 } from './utils/storage';
-import { Project, PromptItem, ViewFilter } from './types';
+import { Project, PromptItem, ViewFilter, UserProfile } from './types';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { ProjectBanner } from './components/ProjectBanner';
@@ -16,7 +19,9 @@ import { PromptRunnerModal } from './components/PromptRunnerModal';
 import { PromptEditorModal } from './components/PromptEditorModal';
 import { FileUploadModal } from './components/FileUploadModal';
 import { ProjectEditorModal } from './components/ProjectEditorModal';
+import { LoginModal } from './components/LoginModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
+import { supabase } from './supabaseClient';
 import { 
   Sparkles, 
   Plus, 
@@ -68,6 +73,20 @@ export default function App() {
   const [isProjectEditorOpen, setIsProjectEditorOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<Project | null>(null);
 
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [user, setUser] = useState<UserProfile | null>(() => loadUser());
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+  const [currentPath, setCurrentPath] = useState(() => window.location.pathname);
+
+  // Sync route pathname on browser popstate navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   // --- Toast Messages ---
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -82,6 +101,122 @@ export default function App() {
   const dismissToast = (id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
+
+  const handleLoginSuccess = (newUser: UserProfile, message: string) => {
+    setUser(newUser);
+    saveUser(newUser);
+    if (window.location.pathname === '/login') {
+      window.history.pushState({}, '', '/');
+      setCurrentPath('/');
+    }
+    setIsLoginModalOpen(false);
+    addToast(message, 'success');
+  };
+
+  const handleLogout = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      // ignore
+    }
+    setUser(null);
+    clearUser();
+    window.history.pushState({}, '', '/login');
+    setCurrentPath('/login');
+    setIsLoginModalOpen(true);
+    addToast('Anda telah keluar dari akun.', 'info');
+  };
+
+  // Protect private pages with supabase.auth.getSession() — if no session, redirect to /login
+  useEffect(() => {
+    let isMounted = true;
+
+    const verifySession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!isMounted) return;
+
+        if (!session) {
+          // No session: Protect private pages -> redirect to /login
+          setUser(null);
+          clearUser();
+          if (window.location.pathname !== '/login') {
+            window.history.pushState({}, '', '/login');
+            setCurrentPath('/login');
+          }
+          setIsLoginModalOpen(true);
+        } else {
+          // Real session exists: grant access to private pages
+          const authUser = session.user;
+          const displayName = authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User';
+          const profile: UserProfile = {
+            id: authUser.id,
+            name: displayName,
+            email: authUser.email || '',
+            provider: 'email',
+            createdAt: authUser.created_at,
+          };
+          setUser(profile);
+          saveUser(profile);
+
+          // If currently on /login, redirect to /
+          if (window.location.pathname === '/login') {
+            window.history.pushState({}, '', '/');
+            setCurrentPath('/');
+          }
+          setIsLoginModalOpen(false);
+        }
+      } catch (err) {
+        console.error('Session check failed', err);
+        if (window.location.pathname !== '/login') {
+          window.history.pushState({}, '', '/login');
+          setCurrentPath('/login');
+        }
+        setIsLoginModalOpen(true);
+      } finally {
+        if (isMounted) setIsCheckingAuth(false);
+      }
+    };
+
+    verifySession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+
+      if (!session) {
+        setUser(null);
+        clearUser();
+        if (window.location.pathname !== '/login') {
+          window.history.pushState({}, '', '/login');
+          setCurrentPath('/login');
+        }
+        setIsLoginModalOpen(true);
+      } else {
+        const authUser = session.user;
+        const displayName = authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User';
+        const profile: UserProfile = {
+          id: authUser.id,
+          name: displayName,
+          email: authUser.email || '',
+          provider: 'email',
+          createdAt: authUser.created_at,
+        };
+        setUser(profile);
+        saveUser(profile);
+
+        if (window.location.pathname === '/login') {
+          window.history.pushState({}, '', '/');
+          setCurrentPath('/');
+        }
+        setIsLoginModalOpen(false);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      subscription?.unsubscribe();
+    };
+  }, []);
 
   // Sync dark mode class on <html>
   useEffect(() => {
@@ -318,6 +453,19 @@ export default function App() {
     addToast('Proyek berhasil dihapus. Prompt di dalamnya dipindahkan ke "Tanpa Proyek".', 'info');
   };
 
+  if (isCheckingAuth) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#faf9f5] dark:bg-[#181716] text-[#1f1e1d] dark:text-[#f0eee6]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-[#faece7] dark:bg-[#38251e] border border-[#cc785c]/30 flex items-center justify-center text-[#cc785c] animate-pulse">
+            <Sparkles className="w-5 h-5" />
+          </div>
+          <div className="text-xs text-[#84817a] font-medium">Memeriksa sesi pengguna...</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#faf9f5] dark:bg-[#181716] text-[#1f1e1d] dark:text-[#f0eee6]">
       {/* Claude Style Left Sidebar */}
@@ -357,6 +505,9 @@ export default function App() {
         onExportMarkdown={() => exportPromptsMarkdown(prompts, projects)}
         isDarkMode={isDarkMode}
         onToggleDarkMode={() => setIsDarkMode(!isDarkMode)}
+        user={user}
+        onOpenLogin={() => setIsLoginModalOpen(true)}
+        onLogout={handleLogout}
       />
 
       {/* Main Content Area */}
@@ -379,6 +530,12 @@ export default function App() {
           }}
           onOpenUpload={() => setIsUploadOpen(true)}
           onToggleSidebar={handleToggleSidebar}
+          user={user}
+          onOpenLogin={() => setIsLoginModalOpen(true)}
+          onLogout={handleLogout}
+          onExportData={() => exportBackupJSON(projects, prompts)}
+          totalPrompts={prompts.length}
+          totalProjects={projects.length}
         />
 
         {/* Project Context Banner (shown when a project is selected) */}
@@ -581,6 +738,18 @@ export default function App() {
         }}
         onSave={handleSaveProject}
         projectToEdit={editingProject}
+      />
+
+      {/* 5. Login / Authentication Modal */}
+      <LoginModal
+        isOpen={isLoginModalOpen || currentPath === '/login' || !user}
+        onClose={() => {
+          if (user && currentPath !== '/login') {
+            setIsLoginModalOpen(false);
+          }
+        }}
+        onLoginSuccess={handleLoginSuccess}
+        canClose={!!user && currentPath !== '/login'}
       />
 
       {/* Toast Notification Container */}

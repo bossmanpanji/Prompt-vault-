@@ -23,6 +23,20 @@ import { LoginModal } from './components/LoginModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { supabase } from './supabaseClient';
 import { 
+  fetchUserProjects, 
+  fetchUserPrompts, 
+  createUserProject, 
+  updateUserProject, 
+  deleteUserProject, 
+  createUserPrompt, 
+  batchCreateUserPrompts, 
+  updateUserPrompt, 
+  toggleUserPromptFavorite, 
+  recordPromptCopy, 
+  deleteUserPrompt 
+} from './services/supabaseService';
+import { INITIAL_PROJECTS, INITIAL_PROMPTS } from './data/initialData';
+import { 
   Sparkles, 
   Plus, 
   Upload, 
@@ -218,6 +232,54 @@ export default function App() {
     };
   }, []);
 
+  // Fetch real data from Supabase whenever user is authenticated
+  useEffect(() => {
+    if (!user?.id) return;
+    let isMounted = true;
+
+    const loadUserData = async () => {
+      try {
+        const [dbProjects, dbPrompts] = await Promise.all([
+          fetchUserProjects(user.id),
+          fetchUserPrompts(user.id)
+        ]);
+
+        if (!isMounted) return;
+
+        if (dbProjects.length > 0 || dbPrompts.length > 0) {
+          setProjects(dbProjects);
+          setPrompts(dbPrompts);
+        } else {
+          // If this is a new Supabase user, seed starter data into Supabase
+          try {
+            const seededProjects = await Promise.all(
+              INITIAL_PROJECTS.map(p => createUserProject(p, user.id))
+            );
+            const seededPrompts = await Promise.all(
+              INITIAL_PROMPTS.map(pr => createUserPrompt(pr, user.id))
+            );
+            if (isMounted) {
+              setProjects(seededProjects);
+              setPrompts(seededPrompts);
+            }
+          } catch (seedErr) {
+            console.warn('Initial seed to Supabase deferred, using local starter data:', seedErr);
+            setProjects(INITIAL_PROJECTS);
+            setPrompts(INITIAL_PROMPTS);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load user data from Supabase:', err);
+      }
+    };
+
+    loadUserData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id]);
+
   // Sync dark mode class on <html>
   useEffect(() => {
     if (isDarkMode) {
@@ -305,21 +367,28 @@ export default function App() {
   }, [prompts, activeProjectId, activeView, selectedCategory, selectedTag, searchQuery, sortBy]);
 
   // --- Handlers ---
-  const handleCopyPrompt = (prompt: PromptItem) => {
+  const handleCopyPrompt = async (prompt: PromptItem) => {
     navigator.clipboard.writeText(prompt.content);
-    // increment copyCount
-    const updated = prompts.map((p) =>
-      p.id === prompt.id
-        ? {
-            ...p,
-            copyCount: p.copyCount + 1,
-            lastUsedAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }
-        : p
+    const newCount = prompt.copyCount + 1;
+    // Update locally immediately for instant UX feedback
+    setPrompts((prev) =>
+      prev.map((p) =>
+        p.id === prompt.id
+          ? {
+              ...p,
+              copyCount: newCount,
+              lastUsedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }
+          : p
+      )
     );
-    setPrompts(updated);
     addToast(`Prompt "${prompt.title}" disalin ke clipboard!`, 'success');
+
+    // Persist to Supabase
+    if (user?.id) {
+      recordPromptCopy(prompt.id, newCount).catch(console.error);
+    }
   };
 
   const handleCopyTextDirect = (text: string, label: string) => {
@@ -327,130 +396,227 @@ export default function App() {
     addToast(`${label} disalin ke clipboard!`, 'success');
   };
 
-  const handleToggleFavorite = (id: string) => {
+  const handleToggleFavorite = async (id: string) => {
+    const target = prompts.find((p) => p.id === id);
+    if (!target) return;
+    const newStatus = !target.isFavorite;
+
     setPrompts((prev) =>
-      prev.map((p) => {
-        if (p.id === id) {
-          const newStatus = !p.isFavorite;
-          addToast(
-            newStatus ? `"${p.title}" ditambahkan ke Favorit.` : `"${p.title}" dihapus dari Favorit.`,
-            'info'
-          );
-          return { ...p, isFavorite: newStatus, updatedAt: new Date().toISOString() };
-        }
-        return p;
-      })
+      prev.map((p) => (p.id === id ? { ...p, isFavorite: newStatus, updatedAt: new Date().toISOString() } : p))
     );
+    addToast(newStatus ? `"${target.title}" ditambahkan ke Favorit.` : `"${target.title}" dihapus dari Favorit.`, 'info');
+
+    if (user?.id) {
+      toggleUserPromptFavorite(id, newStatus).catch(console.error);
+    }
   };
 
-  const handleSavePrompt = (data: Partial<PromptItem>) => {
+  const handleSavePrompt = async (data: Partial<PromptItem>) => {
     if (editingPrompt) {
-      // Update existing
-      setPrompts((prev) =>
-        prev.map((p) =>
-          p.id === editingPrompt.id
-            ? {
-                ...p,
-                ...data,
-                updatedAt: new Date().toISOString(),
-              }
-            : p
-        )
-      );
-      addToast(`Prompt "${data.title}" berhasil diperbarui!`, 'success');
+      // Update existing prompt in Supabase & local state
+      try {
+        if (user?.id) {
+          const updated = await updateUserPrompt(editingPrompt.id, data);
+          setPrompts((prev) => prev.map((p) => (p.id === editingPrompt.id ? updated : p)));
+        } else {
+          setPrompts((prev) =>
+            prev.map((p) => (p.id === editingPrompt.id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p))
+          );
+        }
+        addToast(`Prompt "${data.title}" berhasil diperbarui!`, 'success');
+      } catch (err: any) {
+        console.error('Update prompt error:', err);
+        setPrompts((prev) =>
+          prev.map((p) => (p.id === editingPrompt.id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p))
+        );
+        addToast(`Prompt "${data.title}" berhasil diperbarui!`, 'success');
+      }
     } else {
-      // Create new
-      const newPrompt: PromptItem = {
-        id: 'prompt-' + Date.now().toString(),
-        title: data.title || 'Prompt Baru',
-        content: data.content || '',
-        projectId: data.projectId || activeProjectId || null,
-        description: data.description || '',
-        tags: data.tags || [],
-        variables: data.variables || [],
-        category: data.category || 'Coding & Tech',
-        targetModel: data.targetModel || 'Claude 3.7 Sonnet',
-        isFavorite: false,
-        copyCount: 0,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      setPrompts((prev) => [newPrompt, ...prev]);
-      addToast(`Prompt "${newPrompt.title}" berhasil dibuat!`, 'success');
+      // Create new prompt in Supabase & local state
+      try {
+        if (user?.id) {
+          const created = await createUserPrompt(
+            {
+              ...data,
+              projectId: data.projectId || activeProjectId || null,
+            },
+            user.id
+          );
+          setPrompts((prev) => [created, ...prev]);
+          addToast(`Prompt "${created.title}" berhasil dibuat!`, 'success');
+        } else {
+          const newPrompt: PromptItem = {
+            id: 'prompt-' + Date.now().toString(),
+            title: data.title || 'Prompt Baru',
+            content: data.content || '',
+            projectId: data.projectId || activeProjectId || null,
+            description: data.description || '',
+            tags: data.tags || [],
+            variables: data.variables || [],
+            category: data.category || 'Coding & Tech',
+            targetModel: data.targetModel || 'Claude 3.7 Sonnet',
+            isFavorite: false,
+            copyCount: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setPrompts((prev) => [newPrompt, ...prev]);
+          addToast(`Prompt "${newPrompt.title}" berhasil dibuat!`, 'success');
+        }
+      } catch (err: any) {
+        console.error('Create prompt error:', err);
+        const newPrompt: PromptItem = {
+          id: 'prompt-' + Date.now().toString(),
+          title: data.title || 'Prompt Baru',
+          content: data.content || '',
+          projectId: data.projectId || activeProjectId || null,
+          description: data.description || '',
+          tags: data.tags || [],
+          variables: data.variables || [],
+          category: data.category || 'Coding & Tech',
+          targetModel: data.targetModel || 'Claude 3.7 Sonnet',
+          isFavorite: false,
+          copyCount: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        setPrompts((prev) => [newPrompt, ...prev]);
+        addToast(`Prompt "${newPrompt.title}" berhasil dibuat!`, 'success');
+      }
     }
     setEditingPrompt(null);
   };
 
-  const handleBatchSavePrompts = (batch: Partial<PromptItem>[]) => {
-    const newItems: PromptItem[] = batch.map((item, idx) => ({
-      id: `prompt-${Date.now()}-${idx}`,
-      title: item.title || `Prompt ${idx + 1}`,
-      content: item.content || '',
-      projectId: item.projectId || activeProjectId || null,
-      description: item.description || '',
-      tags: item.tags || ['imported'],
-      variables: item.variables || [],
-      category: item.category || 'Coding & Tech',
-      targetModel: 'Claude 3.7 Sonnet',
-      isFavorite: false,
-      copyCount: 0,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    }));
-
-    setPrompts((prev) => [...newItems, ...prev]);
-    addToast(`${newItems.length} prompt berhasil diimpor!`, 'success');
-  };
-
-  const handleDeletePrompt = (id: string) => {
-    setPrompts((prev) => prev.filter((p) => p.id !== id));
-    addToast('Prompt berhasil dihapus.', 'info');
-  };
-
-  const handleSaveProject = (data: Partial<Project>) => {
-    if (editingProject) {
-      // Update
-      setProjects((prev) =>
-        prev.map((p) =>
-          p.id === editingProject.id
-            ? {
-                ...p,
-                ...data,
-                updatedAt: new Date().toISOString(),
-              }
-            : p
-        )
-      );
-      addToast(`Proyek "${data.name}" berhasil diperbarui!`, 'success');
-    } else {
-      // Create
-      const newProject: Project = {
-        id: 'proj-' + Date.now().toString(),
-        name: data.name || 'Proyek Baru',
-        description: data.description || '',
-        customInstructions: data.customInstructions || '',
-        color: data.color || '#cc785c',
+  const handleBatchSavePrompts = async (batch: Partial<PromptItem>[]) => {
+    try {
+      if (user?.id) {
+        const createdBatch = await batchCreateUserPrompts(
+          batch.map((b) => ({ ...b, projectId: b.projectId || activeProjectId || null })),
+          user.id
+        );
+        setPrompts((prev) => [...createdBatch, ...prev]);
+        addToast(`${createdBatch.length} prompt berhasil diimpor!`, 'success');
+      } else {
+        const newItems: PromptItem[] = batch.map((item, idx) => ({
+          id: `prompt-${Date.now()}-${idx}`,
+          title: item.title || `Prompt ${idx + 1}`,
+          content: item.content || '',
+          projectId: item.projectId || activeProjectId || null,
+          description: item.description || '',
+          tags: item.tags || ['imported'],
+          variables: item.variables || [],
+          category: item.category || 'Coding & Tech',
+          targetModel: 'Claude 3.7 Sonnet',
+          isFavorite: false,
+          copyCount: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }));
+        setPrompts((prev) => [...newItems, ...prev]);
+        addToast(`${newItems.length} prompt berhasil diimpor!`, 'success');
+      }
+    } catch (err: any) {
+      console.error('Batch save error:', err);
+      const newItems: PromptItem[] = batch.map((item, idx) => ({
+        id: `prompt-${Date.now()}-${idx}`,
+        title: item.title || `Prompt ${idx + 1}`,
+        content: item.content || '',
+        projectId: item.projectId || activeProjectId || null,
+        description: item.description || '',
+        tags: item.tags || ['imported'],
+        variables: item.variables || [],
+        category: item.category || 'Coding & Tech',
+        targetModel: 'Claude 3.7 Sonnet',
+        isFavorite: false,
+        copyCount: 0,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      };
-      setProjects((prev) => [...prev, newProject]);
-      setActiveProjectId(newProject.id);
-      addToast(`Proyek "${newProject.name}" berhasil dibuat!`, 'success');
+      }));
+      setPrompts((prev) => [...newItems, ...prev]);
+      addToast(`${newItems.length} prompt berhasil diimpor!`, 'success');
+    }
+  };
+
+  const handleDeletePrompt = async (id: string) => {
+    setPrompts((prev) => prev.filter((p) => p.id !== id));
+    addToast('Prompt berhasil dihapus.', 'info');
+    if (user?.id) {
+      deleteUserPrompt(id).catch(console.error);
+    }
+  };
+
+  const handleSaveProject = async (data: Partial<Project>) => {
+    if (editingProject) {
+      try {
+        if (user?.id) {
+          const updated = await updateUserProject(editingProject.id, data);
+          setProjects((prev) => prev.map((p) => (p.id === editingProject.id ? updated : p)));
+        } else {
+          setProjects((prev) =>
+            prev.map((p) => (p.id === editingProject.id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p))
+          );
+        }
+        addToast(`Proyek "${data.name}" berhasil diperbarui!`, 'success');
+      } catch (err: any) {
+        console.error('Update project error:', err);
+        setProjects((prev) =>
+          prev.map((p) => (p.id === editingProject.id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p))
+        );
+        addToast(`Proyek "${data.name}" berhasil diperbarui!`, 'success');
+      }
+    } else {
+      try {
+        if (user?.id) {
+          const created = await createUserProject(data, user.id);
+          setProjects((prev) => [...prev, created]);
+          setActiveProjectId(created.id);
+          addToast(`Proyek "${created.name}" berhasil dibuat!`, 'success');
+        } else {
+          const newProject: Project = {
+            id: 'proj-' + Date.now().toString(),
+            name: data.name || 'Proyek Baru',
+            description: data.description || '',
+            customInstructions: data.customInstructions || '',
+            color: data.color || '#cc785c',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setProjects((prev) => [...prev, newProject]);
+          setActiveProjectId(newProject.id);
+          addToast(`Proyek "${newProject.name}" berhasil dibuat!`, 'success');
+        }
+      } catch (err: any) {
+        console.error('Create project error:', err);
+        const newProject: Project = {
+          id: 'proj-' + Date.now().toString(),
+          name: data.name || 'Proyek Baru',
+          description: data.description || '',
+          customInstructions: data.customInstructions || '',
+          color: data.color || '#cc785c',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        setProjects((prev) => [...prev, newProject]);
+        setActiveProjectId(newProject.id);
+        addToast(`Proyek "${newProject.name}" berhasil dibuat!`, 'success');
+      }
     }
     setEditingProject(null);
   };
 
-  const handleDeleteProject = (projectId: string) => {
-    // Unassign prompts that belonged to this project
-    setPrompts((prev) =>
-      prev.map((p) => (p.projectId === projectId ? { ...p, projectId: null } : p))
-    );
+  const handleDeleteProject = async (projectId: string) => {
+    // Unassign prompts that belonged to this project locally
+    setPrompts((prev) => prev.map((p) => (p.projectId === projectId ? { ...p, projectId: null } : p)));
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (activeProjectId === projectId) {
       setActiveProjectId(null);
       setActiveView('all');
     }
     addToast('Proyek berhasil dihapus. Prompt di dalamnya dipindahkan ke "Tanpa Proyek".', 'info');
+
+    if (user?.id) {
+      deleteUserProject(projectId).catch(console.error);
+    }
   };
 
   if (isCheckingAuth) {

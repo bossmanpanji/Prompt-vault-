@@ -63,3 +63,16 @@ export interface UserProfile {
   provider: 'email' | 'google' | 'github' | 'guest';
   createdAt: string;
 }
+
+export interface User {
+  id: string;
+  name: string;
+  email: string;
+  avatarColor?: string;
+  avatarUrl?: string;
+  createdAt: string;
+}
+
+export interface UserRecord extends User {
+  passwordHash: string;
+}

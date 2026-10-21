@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { 
   User, 
   LogOut, 
@@ -8,9 +8,20 @@ import {
   Database, 
   ChevronRight,
   Zap,
-  CheckCircle2
+  CheckCircle2,
+  Camera,
+  Trash2,
+  Loader2
 } from 'lucide-react';
 import { UserProfile } from '../types';
+import { 
+  uploadFileToStorage, 
+  deleteFileFromStorage 
+} from '../services/storageService';
+import { 
+  updateUserAvatar, 
+  deleteUserAvatar 
+} from '../services/supabaseService';
 
 interface UserMenuPopupProps {
   user: UserProfile;
@@ -21,6 +32,8 @@ interface UserMenuPopupProps {
   onExportData: () => void;
   totalPrompts: number;
   totalProjects: number;
+  onUpdateAvatar?: (signedUrl: string, avatarPath: string) => void;
+  onDeleteAvatar?: () => void;
 }
 
 export const UserMenuPopup: React.FC<UserMenuPopupProps> = ({
@@ -32,8 +45,12 @@ export const UserMenuPopup: React.FC<UserMenuPopupProps> = ({
   onExportData,
   totalPrompts,
   totalProjects,
+  onUpdateAvatar,
+  onDeleteAvatar,
 }) => {
   const popupRef = useRef<HTMLDivElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   // Close on outside click
   useEffect(() => {
@@ -64,6 +81,45 @@ export const UserMenuPopup: React.FC<UserMenuPopupProps> = ({
 
   if (!isOpen) return null;
 
+  const handleAvatarSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !user.id) return;
+
+    setIsUploadingAvatar(true);
+    try {
+      const res = await uploadFileToStorage(file, {
+        userId: user.id,
+        featureName: 'avatars',
+        itemId: user.id,
+        filename: file.name,
+      });
+
+      const signedUrl = await updateUserAvatar(user.id, res.filePath);
+      if (onUpdateAvatar && signedUrl) {
+        onUpdateAvatar(signedUrl, res.filePath);
+      }
+    } catch (err: any) {
+      console.error('Failed to upload avatar to Supabase Storage:', err);
+    } finally {
+      setIsUploadingAvatar(false);
+      if (avatarInputRef.current) avatarInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteAvatar = async () => {
+    if (!user.id) return;
+    try {
+      if (user.avatarPath) {
+        await deleteUserAvatar(user.id, user.avatarPath);
+      }
+      if (onDeleteAvatar) {
+        onDeleteAvatar();
+      }
+    } catch (err) {
+      console.error('Failed to delete avatar:', err);
+    }
+  };
+
   // Initial letter for avatar
   const initial = user.name ? user.name.charAt(0).toUpperCase() : 'U';
 
@@ -72,20 +128,45 @@ export const UserMenuPopup: React.FC<UserMenuPopupProps> = ({
       ref={popupRef}
       className="absolute right-0 top-full mt-2 w-72 bg-white dark:bg-[#22211f] border border-[#e5e3da] dark:border-[#363430] rounded-2xl shadow-2xl z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
     >
+      <input
+        type="file"
+        ref={avatarInputRef}
+        accept="image/*"
+        className="hidden"
+        onChange={handleAvatarSelect}
+      />
+
       {/* User Header */}
       <div className="p-4 bg-[#faf9f5] dark:bg-[#1c1b1a] border-b border-[#e5e3da] dark:border-[#33312c]">
         <div className="flex items-center gap-3">
-          {user.avatarUrl ? (
-            <img
-              src={user.avatarUrl}
-              alt={user.name}
-              className="w-10 h-10 rounded-full object-cover border border-[#cc785c]/30"
-            />
-          ) : (
-            <div className="w-10 h-10 rounded-full bg-[#faece7] dark:bg-[#38251e] border border-[#cc785c]/40 text-[#cc785c] dark:text-[#e58767] font-semibold text-sm flex items-center justify-center shrink-0">
-              {initial}
-            </div>
-          )}
+          <div className="relative group shrink-0">
+            {user.avatarUrl ? (
+              <img
+                src={user.avatarUrl}
+                alt={user.name}
+                className="w-11 h-11 rounded-full object-cover border border-[#cc785c]/30 shadow-xs"
+              />
+            ) : (
+              <div className="w-11 h-11 rounded-full bg-[#faece7] dark:bg-[#38251e] border border-[#cc785c]/40 text-[#cc785c] dark:text-[#e58767] font-semibold text-sm flex items-center justify-center">
+                {initial}
+              </div>
+            )}
+
+            {/* Camera Overlay for upload to Supabase Storage */}
+            <button
+              type="button"
+              disabled={isUploadingAvatar}
+              onClick={() => avatarInputRef.current?.click()}
+              className="absolute inset-0 rounded-full bg-black/40 text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer"
+              title="Upload Foto Profil (Supabase Storage)"
+            >
+              {isUploadingAvatar ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Camera className="w-4 h-4" />
+              )}
+            </button>
+          </div>
 
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5">
@@ -99,6 +180,16 @@ export const UserMenuPopup: React.FC<UserMenuPopupProps> = ({
             <span className="text-[11px] text-[#84817a] truncate block">
               {user.email}
             </span>
+            {user.avatarUrl && (
+              <button
+                type="button"
+                onClick={handleDeleteAvatar}
+                className="text-[10px] text-red-500 hover:underline flex items-center gap-1 mt-0.5 cursor-pointer"
+              >
+                <Trash2 className="w-2.5 h-2.5" />
+                <span>Hapus Foto</span>
+              </button>
+            )}
           </div>
         </div>
 

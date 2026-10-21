@@ -46,6 +46,17 @@ export const ProjectBanner: React.FC<ProjectBannerProps> = ({
   return (
     <div className="bg-[#f5f3ec]/60 dark:bg-[#1f1e1c]/60 border-b border-[#e5e3da] dark:border-[#33312c] px-6 py-5">
       <div className="max-w-6xl mx-auto space-y-4">
+        {/* Project Cover Image (from private Supabase Storage via signed URL) */}
+        {project.coverUrl && (
+          <div className="w-full h-32 rounded-xl overflow-hidden border border-[#e5e3da] dark:border-[#363430] shadow-xs">
+            <img
+              src={project.coverUrl}
+              alt={project.name}
+              className="w-full h-full object-cover"
+            />
+          </div>
+        )}
+
         {/* Project Header Title & Description */}
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div className="space-y-1.5 min-w-0">

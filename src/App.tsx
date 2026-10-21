@@ -35,6 +35,7 @@ import {
   recordPromptCopy, 
   deleteUserPrompt 
 } from './services/supabaseService';
+import { getSignedUrl } from './services/storageService';
 import { INITIAL_PROJECTS, INITIAL_PROMPTS } from './data/initialData';
 import { 
   Sparkles, 
@@ -141,6 +142,30 @@ export default function App() {
     addToast('Anda telah keluar dari akun.', 'info');
   };
 
+  const handleUpdateAvatar = (signedUrl: string, avatarPath: string) => {
+    if (!user) return;
+    const updated: UserProfile = {
+      ...user,
+      avatarUrl: signedUrl,
+      avatarPath,
+    };
+    setUser(updated);
+    saveUser(updated);
+    addToast('Foto profil berhasil diperbarui!', 'success');
+  };
+
+  const handleDeleteAvatar = () => {
+    if (!user) return;
+    const updated: UserProfile = {
+      ...user,
+      avatarUrl: undefined,
+      avatarPath: undefined,
+    };
+    setUser(updated);
+    saveUser(updated);
+    addToast('Foto profil berhasil dihapus.', 'info');
+  };
+
   // Protect private pages with supabase.auth.getSession() — if no session, redirect to /login
   useEffect(() => {
     let isMounted = true;
@@ -163,10 +188,22 @@ export default function App() {
           // Real session exists: grant access to private pages
           const authUser = session.user;
           const displayName = authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User';
+          const avatarPath = authUser.user_metadata?.avatar_path;
+          let avatarUrl = authUser.user_metadata?.avatar_url;
+          if (avatarPath) {
+            try {
+              const signed = await getSignedUrl(avatarPath, 3600);
+              if (signed) avatarUrl = signed;
+            } catch (e) {
+              // ignore
+            }
+          }
           const profile: UserProfile = {
             id: authUser.id,
             name: displayName,
             email: authUser.email || '',
+            avatarPath,
+            avatarUrl,
             provider: 'email',
             createdAt: authUser.created_at,
           };
@@ -208,10 +245,21 @@ export default function App() {
       } else {
         const authUser = session.user;
         const displayName = authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'User';
+        const avatarPath = authUser.user_metadata?.avatar_path;
+        let avatarUrl = authUser.user_metadata?.avatar_url;
+        if (avatarPath) {
+          getSignedUrl(avatarPath, 3600).then((signed) => {
+            if (signed && isMounted) {
+              setUser((prev) => prev ? { ...prev, avatarUrl: signed, avatarPath } : prev);
+            }
+          }).catch(console.warn);
+        }
         const profile: UserProfile = {
           id: authUser.id,
           name: displayName,
           email: authUser.email || '',
+          avatarPath,
+          avatarUrl,
           provider: 'email',
           createdAt: authUser.created_at,
         };
@@ -717,6 +765,8 @@ export default function App() {
           onExportData={() => exportBackupJSON(projects, prompts)}
           totalPrompts={prompts.length}
           totalProjects={projects.length}
+          onUpdateAvatar={handleUpdateAvatar}
+          onDeleteAvatar={handleDeleteAvatar}
         />
 
         {/* Project Context Banner (shown when a project is selected) */}
@@ -898,6 +948,7 @@ export default function App() {
         promptToEdit={editingPrompt}
         projects={projects}
         defaultProjectId={activeProjectId}
+        userId={user?.id}
       />
 
       {/* 3. File Upload / Paste Modal */}
@@ -908,6 +959,7 @@ export default function App() {
         onBatchSavePrompts={handleBatchSavePrompts}
         projects={projects}
         activeProjectId={activeProjectId}
+        userId={user?.id}
       />
 
       {/* 4. Project Editor Modal (Create / Edit) */}
@@ -919,6 +971,7 @@ export default function App() {
         }}
         onSave={handleSaveProject}
         projectToEdit={editingProject}
+        userId={user?.id}
       />
 
       {/* 5. Login / Authentication Modal */}

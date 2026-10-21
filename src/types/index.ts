@@ -5,6 +5,8 @@ export interface Project {
   customInstructions?: string; // Like Claude's project custom instructions
   color?: string; // Theme accent color
   icon?: string;
+  coverPath?: string; // Supabase Storage path: ${userId}/projects/${projectId}/${uuid}.${ext}
+  coverUrl?: string; // Signed URL for private storage display
   createdAt: string;
   updatedAt: string;
 }
@@ -41,6 +43,11 @@ export interface PromptItem {
   createdAt: string;
   updatedAt: string;
   versions?: PromptVersion[];
+  attachmentPath?: string; // Supabase Storage path: ${userId}/prompts/${promptId}/${uuid}.${ext}
+  attachmentName?: string;
+  attachmentSize?: number;
+  attachmentType?: string;
+  attachmentUrl?: string; // Signed URL for private storage display/download
 }
 
 export type ViewFilter = 'all' | 'favorites' | 'recent' | 'no-project';
@@ -59,7 +66,8 @@ export interface UserProfile {
   id: string;
   name: string;
   email: string;
-  avatarUrl?: string;
+  avatarPath?: string; // Supabase Storage path: ${userId}/avatars/${userId}/${uuid}.${ext}
+  avatarUrl?: string; // Signed URL for private storage display
   provider: 'email' | 'google' | 'github' | 'guest';
   createdAt: string;
 }

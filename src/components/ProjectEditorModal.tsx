@@ -1,12 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { X, FolderPlus, Sparkles, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, FolderPlus, Sparkles, AlertCircle, Image as ImageIcon, Trash2, Upload } from 'lucide-react';
 import { Project } from '../types';
+import { 
+  uploadFileToStorage, 
+  deleteFileFromStorage 
+} from '../services/storageService';
 
 interface ProjectEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (projectData: Partial<Project>) => void;
   projectToEdit?: Project | null;
+  userId?: string;
 }
 
 const COLOR_PALETTE = [
@@ -24,12 +29,17 @@ export const ProjectEditorModal: React.FC<ProjectEditorModalProps> = ({
   onClose,
   onSave,
   projectToEdit,
+  userId,
 }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [customInstructions, setCustomInstructions] = useState('');
   const [color, setColor] = useState('#cc785c');
+  const [coverPath, setCoverPath] = useState<string | undefined>(undefined);
+  const [coverUrl, setCoverUrl] = useState<string | undefined>(undefined);
+  const [isUploadingCover, setIsUploadingCover] = useState(false);
   const [error, setError] = useState('');
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (projectToEdit) {
@@ -37,16 +47,57 @@ export const ProjectEditorModal: React.FC<ProjectEditorModalProps> = ({
       setDescription(projectToEdit.description || '');
       setCustomInstructions(projectToEdit.customInstructions || '');
       setColor(projectToEdit.color || '#cc785c');
+      setCoverPath(projectToEdit.coverPath);
+      setCoverUrl(projectToEdit.coverUrl);
     } else {
       setName('');
       setDescription('');
       setCustomInstructions('');
       setColor('#cc785c');
+      setCoverPath(undefined);
+      setCoverUrl(undefined);
     }
     setError('');
   }, [projectToEdit, isOpen]);
 
   if (!isOpen) return null;
+
+  const handleCoverSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!userId) {
+      const localUrl = URL.createObjectURL(file);
+      setCoverUrl(localUrl);
+      return;
+    }
+
+    setIsUploadingCover(true);
+    try {
+      const itemId = projectToEdit?.id || ('proj-' + Date.now().toString() + '-' + Math.random().toString(36).substring(2, 6));
+      const res = await uploadFileToStorage(file, {
+        userId,
+        featureName: 'projects',
+        itemId,
+        filename: file.name,
+      });
+      setCoverPath(res.filePath);
+      setCoverUrl(res.signedUrl || undefined);
+    } catch (err: any) {
+      setError('Gagal mengunggah cover proyek: ' + (err.message || 'Terjadi kesalahan'));
+    } finally {
+      setIsUploadingCover(false);
+      if (coverInputRef.current) coverInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteCover = async () => {
+    if (coverPath) {
+      await deleteFileFromStorage(coverPath);
+    }
+    setCoverPath(undefined);
+    setCoverUrl(undefined);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,6 +111,8 @@ export const ProjectEditorModal: React.FC<ProjectEditorModalProps> = ({
       description: description.trim(),
       customInstructions: customInstructions.trim(),
       color,
+      coverPath,
+      coverUrl,
     });
 
     onClose();
@@ -153,6 +206,64 @@ export const ProjectEditorModal: React.FC<ProjectEditorModalProps> = ({
               onChange={(e) => setDescription(e.target.value)}
               className="w-full p-3 text-xs bg-[#faf9f5] dark:bg-[#1c1b19] border border-[#e5e3da] dark:border-[#363430] rounded-xl text-[#1f1e1d] dark:text-[#f0eee6] placeholder-[#84817a] focus:outline-none focus:border-[#cc785c] resize-none"
             />
+          </div>
+
+          {/* Cover Image Upload (Supabase Storage: app-files) */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-[#1f1e1d] dark:text-[#f0eee6] flex items-center gap-1.5">
+                <ImageIcon className="w-3.5 h-3.5 text-[#cc785c]" />
+                <span>Gambar Sampul / Cover Proyek (Opsional)</span>
+              </label>
+              <span className="text-[10px] text-[#84817a]">Supabase Storage</span>
+            </div>
+
+            <input
+              type="file"
+              ref={coverInputRef}
+              accept="image/*"
+              className="hidden"
+              onChange={handleCoverSelect}
+            />
+
+            {coverUrl ? (
+              <div className="relative rounded-xl overflow-hidden border border-[#e5e3da] dark:border-[#363430] group">
+                <img
+                  src={coverUrl}
+                  alt="Cover proyek"
+                  className="w-full h-24 object-cover"
+                />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => coverInputRef.current?.click()}
+                    className="p-1.5 bg-white/90 dark:bg-black/80 rounded-lg text-xs font-medium text-[#1f1e1d] dark:text-[#f0eee6] hover:bg-white flex items-center gap-1 cursor-pointer"
+                  >
+                    <Upload className="w-3.5 h-3.5" />
+                    <span>Ganti</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteCover}
+                    className="p-1.5 bg-white/90 dark:bg-black/80 rounded-lg text-xs font-medium text-red-600 hover:bg-white flex items-center gap-1 cursor-pointer"
+                    title="Hapus Cover"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Hapus</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={isUploadingCover}
+                onClick={() => coverInputRef.current?.click()}
+                className="w-full py-3 px-3 border border-dashed border-[#e5e3da] dark:border-[#363430] hover:border-[#cc785c]/60 rounded-xl text-xs text-[#57554f] dark:text-[#bab6ab] hover:text-[#cc785c] bg-[#faf9f5] dark:bg-[#1c1b19] transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <ImageIcon className="w-4 h-4" />
+                <span>{isUploadingCover ? 'Mengunggah cover ke Storage...' : 'Upload gambar sampul proyek'}</span>
+              </button>
+            )}
           </div>
 
           {/* Project Custom Instructions (Claude AI Project Instructions) */}

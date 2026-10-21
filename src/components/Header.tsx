@@ -38,6 +38,8 @@ interface HeaderProps {
   onExportData: () => void;
   totalPrompts: number;
   totalProjects: number;
+  onUpdateAvatar?: (signedUrl: string, avatarPath: string) => void;
+  onDeleteAvatar?: () => void;
 }
 
 const CATEGORIES: PromptCategory[] = [
@@ -71,6 +73,8 @@ export const Header: React.FC<HeaderProps> = ({
   onExportData,
   totalPrompts,
   totalProjects,
+  onUpdateAvatar,
+  onDeleteAvatar,
 }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = React.useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -234,6 +238,8 @@ export const Header: React.FC<HeaderProps> = ({
                   onExportData={onExportData}
                   totalPrompts={totalPrompts}
                   totalProjects={totalProjects}
+                  onUpdateAvatar={onUpdateAvatar}
+                  onDeleteAvatar={onDeleteAvatar}
                 />
               </div>
             ) : (

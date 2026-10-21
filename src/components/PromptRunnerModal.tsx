@@ -9,7 +9,8 @@ import {
   ExternalLink,
   Code2,
   Sliders,
-  CheckCircle2
+  CheckCircle2,
+  Paperclip
 } from 'lucide-react';
 import { PromptItem, Project } from '../types';
 import { replaceVariables, getPromptStats } from '../utils/variableDetector';
@@ -111,6 +112,21 @@ export const PromptRunnerModal: React.FC<PromptRunnerModalProps> = ({
                   <>
                     <span aria-hidden="true">·</span>
                     <span className="font-mono text-[10px]">{prompt.targetModel}</span>
+                  </>
+                )}
+                {prompt.attachmentName && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <a
+                      href={prompt.attachmentUrl || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#cc785c] hover:underline flex items-center gap-1 font-mono text-[10px]"
+                      title="Buka lampiran dari Supabase Storage"
+                    >
+                      <Paperclip className="w-3 h-3" />
+                      <span className="truncate max-w-[120px]">{prompt.attachmentName}</span>
+                    </a>
                   </>
                 )}
               </div>

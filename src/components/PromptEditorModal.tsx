@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   X, 
   Sparkles, 
@@ -7,10 +7,19 @@ import {
   Layers, 
   Sliders, 
   FileText,
-  AlertCircle
+  AlertCircle,
+  Paperclip,
+  Trash2,
+  Download,
+  FileCode
 } from 'lucide-react';
 import { PromptItem, Project, PromptCategory } from '../types';
 import { extractVariables, getPromptStats } from '../utils/variableDetector';
+import { 
+  uploadFileToStorage, 
+  deleteFileFromStorage, 
+  downloadFileFromStorage 
+} from '../services/storageService';
 
 interface PromptEditorModalProps {
   isOpen: boolean;
@@ -19,6 +28,7 @@ interface PromptEditorModalProps {
   promptToEdit?: PromptItem | null;
   projects: Project[];
   defaultProjectId?: string | null;
+  userId?: string;
 }
 
 const CATEGORIES: PromptCategory[] = [
@@ -48,6 +58,7 @@ export const PromptEditorModal: React.FC<PromptEditorModalProps> = ({
   promptToEdit,
   projects,
   defaultProjectId,
+  userId,
 }) => {
   const [title, setTitle] = useState('');
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -60,6 +71,15 @@ export const PromptEditorModal: React.FC<PromptEditorModalProps> = ({
   const [versionNote, setVersionNote] = useState('');
   const [error, setError] = useState('');
 
+  // Attachment states for Supabase Storage
+  const [attachmentPath, setAttachmentPath] = useState<string | undefined>(undefined);
+  const [attachmentName, setAttachmentName] = useState<string | undefined>(undefined);
+  const [attachmentSize, setAttachmentSize] = useState<number | undefined>(undefined);
+  const [attachmentType, setAttachmentType] = useState<string | undefined>(undefined);
+  const [attachmentUrl, setAttachmentUrl] = useState<string | undefined>(undefined);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   useEffect(() => {
     if (promptToEdit) {
       setTitle(promptToEdit.title);
@@ -71,6 +91,11 @@ export const PromptEditorModal: React.FC<PromptEditorModalProps> = ({
       setTags(promptToEdit.tags || []);
       setTagInput('');
       setVersionNote('');
+      setAttachmentPath(promptToEdit.attachmentPath);
+      setAttachmentName(promptToEdit.attachmentName);
+      setAttachmentSize(promptToEdit.attachmentSize);
+      setAttachmentType(promptToEdit.attachmentType);
+      setAttachmentUrl(promptToEdit.attachmentUrl);
     } else {
       setTitle('');
       setProjectId(defaultProjectId || null);
@@ -81,6 +106,11 @@ export const PromptEditorModal: React.FC<PromptEditorModalProps> = ({
       setTags([]);
       setTagInput('');
       setVersionNote('');
+      setAttachmentPath(undefined);
+      setAttachmentName(undefined);
+      setAttachmentSize(undefined);
+      setAttachmentType(undefined);
+      setAttachmentUrl(undefined);
     }
     setError('');
   }, [promptToEdit, defaultProjectId, isOpen]);
@@ -110,6 +140,50 @@ export const PromptEditorModal: React.FC<PromptEditorModalProps> = ({
     }
   };
 
+  const handleAttachmentSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!userId) {
+      setAttachmentName(file.name);
+      setAttachmentSize(file.size);
+      setAttachmentType(file.type);
+      return;
+    }
+
+    setIsUploadingAttachment(true);
+    try {
+      const itemId = promptToEdit?.id || ('prompt-' + Date.now().toString() + '-' + Math.random().toString(36).substring(2, 6));
+      const res = await uploadFileToStorage(file, {
+        userId,
+        featureName: 'prompts',
+        itemId,
+        filename: file.name,
+      });
+      setAttachmentPath(res.filePath);
+      setAttachmentName(res.originalName);
+      setAttachmentSize(res.size);
+      setAttachmentType(res.type);
+      setAttachmentUrl(res.signedUrl || undefined);
+    } catch (err: any) {
+      setError('Gagal mengunggah lampiran: ' + (err.message || 'Terjadi kesalahan'));
+    } finally {
+      setIsUploadingAttachment(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDeleteAttachment = async () => {
+    if (attachmentPath) {
+      await deleteFileFromStorage(attachmentPath);
+    }
+    setAttachmentPath(undefined);
+    setAttachmentName(undefined);
+    setAttachmentSize(undefined);
+    setAttachmentType(undefined);
+    setAttachmentUrl(undefined);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
@@ -130,6 +204,11 @@ export const PromptEditorModal: React.FC<PromptEditorModalProps> = ({
       content: content.trim(),
       variables: detectedVariables,
       tags,
+      attachmentPath,
+      attachmentName,
+      attachmentSize,
+      attachmentType,
+      attachmentUrl,
       ...(versionNote && promptToEdit ? {
         versions: [
           ...(promptToEdit.versions || []),
@@ -306,6 +385,72 @@ export const PromptEditorModal: React.FC<PromptEditorModalProps> = ({
               <p className="text-[11px] text-[#84817a] dark:text-[#78756e]">
                 Belum ada variabel. Tambahkan <code className="font-mono text-[#cc785c]">{'{{topik}}'}</code> atau <code className="font-mono text-[#cc785c]">{'{target}'}</code> untuk templating otomatis.
               </p>
+            )}
+          </div>
+
+          {/* File Attachment (Supabase Storage: app-files) */}
+          <div className="space-y-1.5 p-3 bg-[#faf9f5] dark:bg-[#1c1b19] border border-[#e5e3da] dark:border-[#363430] rounded-xl">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-[#1f1e1d] dark:text-[#f0eee6] flex items-center gap-1.5">
+                <Paperclip className="w-3.5 h-3.5 text-[#cc785c]" />
+                <span>Lampiran File Referensi</span>
+              </label>
+              <span className="text-[10px] text-[#84817a]">Supabase Storage (app-files)</span>
+            </div>
+
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              onChange={handleAttachmentSelect}
+            />
+
+            {attachmentName ? (
+              <div className="flex items-center justify-between p-2.5 bg-white dark:bg-[#252421] border border-[#e5e3da]/80 dark:border-[#33312c] rounded-lg">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <FileCode className="w-4 h-4 text-[#cc785c] shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-[#1f1e1d] dark:text-[#f0eee6] truncate">
+                      {attachmentName}
+                    </p>
+                    <p className="text-[10px] text-[#84817a]">
+                      {attachmentSize ? `${(attachmentSize / 1024).toFixed(1)} KB` : 'Tersimpan'}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {attachmentUrl && (
+                    <a
+                      href={attachmentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="p-1.5 text-[#84817a] hover:text-[#cc785c] rounded hover:bg-[#faf9f5] dark:hover:bg-[#2e2c28] transition-colors"
+                      title="Buka / Unduh Lampiran"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleDeleteAttachment}
+                    className="p-1.5 text-[#84817a] hover:text-red-500 rounded hover:bg-[#faf9f5] dark:hover:bg-[#2e2c28] transition-colors cursor-pointer"
+                    title="Hapus Lampiran dari Storage"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                disabled={isUploadingAttachment}
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-2 px-3 border border-dashed border-[#e5e3da] dark:border-[#363430] hover:border-[#cc785c]/60 rounded-lg text-xs text-[#57554f] dark:text-[#bab6ab] hover:text-[#cc785c] bg-white dark:bg-[#22211f] transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <Paperclip className="w-3.5 h-3.5" />
+                <span>{isUploadingAttachment ? 'Mengunggah ke Storage...' : 'Lampirkan file referensi (.txt, .md, .pdf, dsb.)'}</span>
+              </button>
             )}
           </div>
 

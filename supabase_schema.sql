@@ -1,8 +1,8 @@
 -- ==============================================================================
--- PromptVault - Supabase Database Schema & RLS Policies
+-- PromptVault - Supabase Database Schema, Storage Policies & RLS
 -- ==============================================================================
 -- Jalankan skrip SQL ini langsung di Supabase SQL Editor (Dashboard > SQL Editor)
--- Semua data dilindungi dengan Row Level Security (RLS) berbasis auth.uid().
+-- Semua data & file dilindungi dengan Row Level Security (RLS) berbasis auth.uid().
 -- ==============================================================================
 
 -- 1. EXTENSIONS (Opsional: UUID generation)
@@ -19,9 +19,13 @@ create table if not exists public.projects (
   custom_instructions text default '',
   color text default '#cc785c',
   icon text default 'Folder',
+  cover_path text, -- Supabase Storage path: ${userId}/projects/${projectId}/${uuid}.${ext}
   created_at timestamptz not null default timezone('utc'::text, now()),
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
+
+-- Tambah kolom jika tabel sudah ada sebelumnya
+alter table public.projects add column if not exists cover_path text;
 
 -- Index untuk mempercepat query berdasarkan user_id
 create index if not exists idx_projects_user_id on public.projects(user_id);
@@ -71,9 +75,19 @@ create table if not exists public.prompts (
   copy_count integer not null default 0,
   last_used_at timestamptz,
   versions jsonb default '[]'::jsonb,
+  attachment_path text, -- Supabase Storage path: ${userId}/prompts/${promptId}/${uuid}.${ext}
+  attachment_name text,
+  attachment_size bigint,
+  attachment_type text,
   created_at timestamptz not null default timezone('utc'::text, now()),
   updated_at timestamptz not null default timezone('utc'::text, now())
 );
+
+-- Tambah kolom jika tabel sudah ada sebelumnya
+alter table public.prompts add column if not exists attachment_path text;
+alter table public.prompts add column if not exists attachment_name text;
+alter table public.prompts add column if not exists attachment_size bigint;
+alter table public.prompts add column if not exists attachment_type text;
 
 -- Index untuk performa pencarian, filtering proyek, dan kategori
 create index if not exists idx_prompts_user_id on public.prompts(user_id);

@@ -10,7 +10,8 @@ import {
   Download, 
   Layers, 
   Clock, 
-  Tag
+  Tag,
+  Paperclip
 } from 'lucide-react';
 import { PromptItem, Project } from '../types';
 import { getPromptStats } from '../utils/variableDetector';
@@ -136,6 +137,18 @@ export const PromptCard: React.FC<PromptCardProps> = ({
                     <Download className="w-3.5 h-3.5" />
                     <span>Unduh .txt</span>
                   </button>
+                  {prompt.attachmentUrl && (
+                    <a
+                      href={prompt.attachmentUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => setMenuOpen(false)}
+                      className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#57554f] dark:text-[#bab6ab] hover:bg-[#faf9f5] dark:hover:bg-[#2a2926]"
+                    >
+                      <Paperclip className="w-3.5 h-3.5 text-[#cc785c]" />
+                      <span>Buka Lampiran</span>
+                    </a>
+                  )}
                   <button
                     onClick={() => {
                       setMenuOpen(false);
@@ -173,7 +186,7 @@ export const PromptCard: React.FC<PromptCardProps> = ({
           </p>
         </div>
 
-        {/* Variable detection indicator & Tags */}
+        {/* Variable detection indicator & Tags & Attachments */}
         <div className="flex flex-wrap items-center gap-1.5 my-2 text-[11px]">
           {hasVariables && (
             <span className="text-[#cc785c] font-medium flex items-center gap-1">
@@ -182,9 +195,25 @@ export const PromptCard: React.FC<PromptCardProps> = ({
             </span>
           )}
 
+          {prompt.attachmentName && (
+            <div 
+              onClick={(e) => {
+                e.stopPropagation();
+                if (prompt.attachmentUrl) {
+                  window.open(prompt.attachmentUrl, '_blank');
+                }
+              }}
+              className="flex items-center gap-1 text-[10px] text-[#cc785c] hover:underline cursor-pointer bg-[#faece7]/60 dark:bg-[#38251e]/50 px-1.5 py-0.5 rounded font-mono"
+              title="Lampiran tersimpan di Supabase Storage (app-files)"
+            >
+              <Paperclip className="w-3 h-3" />
+              <span className="truncate max-w-[120px]">{prompt.attachmentName}</span>
+            </div>
+          )}
+
           {prompt.tags && prompt.tags.length > 0 && (
             <div className="flex items-center gap-1 text-[#84817a] dark:text-[#78756e]">
-              {hasVariables && <span aria-hidden="true">·</span>}
+              {(hasVariables || prompt.attachmentName) && <span aria-hidden="true">·</span>}
               {prompt.tags.slice(0, 3).map((tag) => (
                 <span
                   key={tag}

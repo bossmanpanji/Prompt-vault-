@@ -13,14 +13,16 @@ import {
 import { Project, PromptCategory, PromptItem } from '../types';
 import { parseTextFileContent } from '../utils/storage';
 import { extractVariables, getPromptStats } from '../utils/variableDetector';
+import { uploadFileToStorage } from '../services/storageService';
 
 interface FileUploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSavePrompt: (promptData: Partial<PromptItem>) => void;
-  onBatchSavePrompts: (promptsData: Partial<PromptItem>[]) => void;
+  onSavePrompt: (promptData: Partial<PromptItem>) => void | Promise<void>;
+  onBatchSavePrompts: (promptsData: Partial<PromptItem>[]) => void | Promise<void>;
   projects: Project[];
   activeProjectId?: string | null;
+  userId?: string;
 }
 
 const CATEGORIES: PromptCategory[] = [
@@ -40,14 +42,17 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
   onBatchSavePrompts,
   projects,
   activeProjectId,
+  userId,
 }) => {
   const [activeTab, setActiveTab] = useState<'upload' | 'paste'>('upload');
   const [targetProjectId, setTargetProjectId] = useState<string | null>(activeProjectId || null);
   const [selectedCategory, setSelectedCategory] = useState<PromptCategory>('Coding & Tech');
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   
   // File Upload State
   interface ParsedFile {
+    file?: File;
     filename: string;
     title: string;
     description: string;
@@ -91,6 +96,7 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
               parsedJson.forEach((item) => {
                 if (item.title && item.content) {
                   results.push({
+                    file,
                     filename: file.name,
                     title: item.title,
                     description: item.description || '',
@@ -102,6 +108,7 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
               continue;
             } else if (parsedJson.title && parsedJson.content) {
               results.push({
+                file,
                 filename: file.name,
                 title: parsedJson.title,
                 description: parsedJson.description || '',
@@ -118,6 +125,7 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
         // Standard text/markdown file
         const parsed = parseTextFileContent(file.name, text);
         results.push({
+          file,
           filename: file.name,
           title: parsed.title,
           description: parsed.description,
@@ -151,35 +159,106 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
     setIsDragging(false);
   };
 
-  // Submit Uploaded Files
-  const handleSaveUploadedFiles = () => {
+  // Submit Uploaded Files to Supabase Storage & Database
+  const handleSaveUploadedFiles = async () => {
     if (parsedFiles.length === 0) return;
+    setIsUploading(true);
 
-    if (parsedFiles.length === 1) {
-      const f = parsedFiles[0];
-      onSavePrompt({
-        title: f.title,
-        description: f.description,
-        content: f.content,
-        variables: f.variables,
-        projectId: targetProjectId,
-        category: selectedCategory,
-        tags: ['uploaded', f.filename.split('.').pop() || 'txt'],
-      });
-    } else {
-      const batch = parsedFiles.map((f) => ({
-        title: f.title,
-        description: f.description,
-        content: f.content,
-        variables: f.variables,
-        projectId: targetProjectId,
-        category: selectedCategory,
-        tags: ['batch-import'],
-      }));
-      onBatchSavePrompts(batch);
+    try {
+      if (parsedFiles.length === 1) {
+        const f = parsedFiles[0];
+        let attachmentPath: string | undefined;
+        let attachmentName: string | undefined;
+        let attachmentSize: number | undefined;
+        let attachmentType: string | undefined;
+        let attachmentUrl: string | undefined;
+
+        if (userId && f.file) {
+          try {
+            const itemId = 'prompt-' + Date.now().toString() + '-' + Math.random().toString(36).substring(2, 6);
+            const uploadRes = await uploadFileToStorage(f.file, {
+              userId,
+              featureName: 'prompts',
+              itemId,
+              filename: f.filename,
+            });
+            attachmentPath = uploadRes.filePath;
+            attachmentName = uploadRes.originalName;
+            attachmentSize = uploadRes.size;
+            attachmentType = uploadRes.type;
+            attachmentUrl = uploadRes.signedUrl || undefined;
+          } catch (uploadErr) {
+            console.warn('Storage upload warning, proceeding with prompt content:', uploadErr);
+          }
+        }
+
+        await onSavePrompt({
+          title: f.title,
+          description: f.description,
+          content: f.content,
+          variables: f.variables,
+          projectId: targetProjectId,
+          category: selectedCategory,
+          tags: ['uploaded', f.filename.split('.').pop() || 'txt'],
+          attachmentPath,
+          attachmentName,
+          attachmentSize,
+          attachmentType,
+          attachmentUrl,
+        });
+      } else {
+        const batch: Partial<PromptItem>[] = [];
+        for (let i = 0; i < parsedFiles.length; i++) {
+          const f = parsedFiles[i];
+          let attachmentPath: string | undefined;
+          let attachmentName: string | undefined;
+          let attachmentSize: number | undefined;
+          let attachmentType: string | undefined;
+          let attachmentUrl: string | undefined;
+
+          if (userId && f.file) {
+            try {
+              const itemId = `prompt-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 6)}`;
+              const uploadRes = await uploadFileToStorage(f.file, {
+                userId,
+                featureName: 'prompts',
+                itemId,
+                filename: f.filename,
+              });
+              attachmentPath = uploadRes.filePath;
+              attachmentName = uploadRes.originalName;
+              attachmentSize = uploadRes.size;
+              attachmentType = uploadRes.type;
+              attachmentUrl = uploadRes.signedUrl || undefined;
+            } catch (uploadErr) {
+              console.warn('Batch storage upload warning:', uploadErr);
+            }
+          }
+
+          batch.push({
+            title: f.title,
+            description: f.description,
+            content: f.content,
+            variables: f.variables,
+            projectId: targetProjectId,
+            category: selectedCategory,
+            tags: ['batch-import'],
+            attachmentPath,
+            attachmentName,
+            attachmentSize,
+            attachmentType,
+            attachmentUrl,
+          });
+        }
+        await onBatchSavePrompts(batch);
+      }
+
+      onClose();
+    } catch (err: any) {
+      setFileError('Gagal mengunggah file: ' + (err.message || 'Terjadi kesalahan'));
+    } finally {
+      setIsUploading(false);
     }
-
-    onClose();
   };
 
   // Submit Pasted Prompt
@@ -470,11 +549,11 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
           {activeTab === 'upload' ? (
             <button
               type="button"
-              disabled={parsedFiles.length === 0}
+              disabled={parsedFiles.length === 0 || isUploading}
               onClick={handleSaveUploadedFiles}
               className="px-5 py-2 text-xs font-medium bg-[#cc785c] hover:bg-[#b5674c] disabled:opacity-50 text-white rounded-xl shadow-xs transition-colors cursor-pointer"
             >
-              Simpan File ({parsedFiles.length})
+              {isUploading ? `Mengunggah (${parsedFiles.length})...` : `Simpan File (${parsedFiles.length})`}
             </button>
           ) : (
             <button

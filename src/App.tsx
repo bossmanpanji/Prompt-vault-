@@ -784,6 +784,7 @@ export default function App() {
             }}
             onUploadInProject={() => setIsUploadOpen(true)}
             onCopyText={handleCopyTextDirect}
+            onDeleteProject={handleDeleteProject}
           />
         )}
 
@@ -970,6 +971,7 @@ export default function App() {
           setEditingProject(null);
         }}
         onSave={handleSaveProject}
+        onDelete={handleDeleteProject}
         projectToEdit={editingProject}
         userId={user?.id}
       />

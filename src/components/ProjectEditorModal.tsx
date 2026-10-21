@@ -5,11 +5,13 @@ import {
   uploadFileToStorage, 
   deleteFileFromStorage 
 } from '../services/storageService';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface ProjectEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSave: (projectData: Partial<Project>) => void;
+  onDelete?: (projectId: string) => void;
   projectToEdit?: Project | null;
   userId?: string;
 }
@@ -28,6 +30,7 @@ export const ProjectEditorModal: React.FC<ProjectEditorModalProps> = ({
   isOpen,
   onClose,
   onSave,
+  onDelete,
   projectToEdit,
   userId,
 }) => {
@@ -38,6 +41,7 @@ export const ProjectEditorModal: React.FC<ProjectEditorModalProps> = ({
   const [coverPath, setCoverPath] = useState<string | undefined>(undefined);
   const [coverUrl, setCoverUrl] = useState<string | undefined>(undefined);
   const [isUploadingCover, setIsUploadingCover] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [error, setError] = useState('');
   const coverInputRef = useRef<HTMLInputElement>(null);
 
@@ -291,23 +295,55 @@ export const ProjectEditorModal: React.FC<ProjectEditorModalProps> = ({
         </form>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-[#e5e3da] dark:border-[#33312c] bg-white dark:bg-[#22211f] flex items-center justify-end gap-2.5">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-medium text-[#57554f] dark:text-[#bab6ab] hover:bg-[#faf9f5] dark:hover:bg-[#2a2926] rounded-xl border border-[#e5e3da] dark:border-[#363430] transition-colors cursor-pointer"
-          >
-            Batal
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="px-5 py-2 text-xs font-medium bg-[#cc785c] hover:bg-[#b5674c] text-white rounded-xl shadow-xs transition-colors cursor-pointer"
-          >
-            {projectToEdit ? 'Simpan Perubahan' : 'Buat Proyek'}
-          </button>
+        <div className="px-6 py-4 border-t border-[#e5e3da] dark:border-[#33312c] bg-white dark:bg-[#22211f] flex items-center justify-between gap-2.5">
+          {projectToEdit && onDelete ? (
+            <button
+              type="button"
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-xl transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Hapus Proyek</span>
+            </button>
+          ) : (
+            <div />
+          )}
+
+          <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 text-xs font-medium text-[#57554f] dark:text-[#bab6ab] hover:bg-[#faf9f5] dark:hover:bg-[#2a2926] rounded-xl border border-[#e5e3da] dark:border-[#363430] transition-colors cursor-pointer"
+            >
+              Batal
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="px-5 py-2 text-xs font-medium bg-[#cc785c] hover:bg-[#b5674c] text-white rounded-xl shadow-xs transition-colors cursor-pointer"
+            >
+              {projectToEdit ? 'Simpan Perubahan' : 'Buat Proyek'}
+            </button>
+          </div>
         </div>
       </div>
+
+      {projectToEdit && (
+        <ConfirmDeleteModal
+          isOpen={isDeleteModalOpen}
+          title="Hapus Proyek"
+          itemName={projectToEdit.name}
+          description="Prompt di dalam proyek ini tidak akan dihapus, melainkan dipindahkan ke kategori 'Tanpa Proyek'. Sampul proyek (jika ada) akan dihapus dari Supabase Storage."
+          confirmLabel="Hapus Proyek"
+          onConfirm={() => {
+            if (onDelete) {
+              onDelete(projectToEdit.id);
+            }
+            onClose();
+          }}
+          onClose={() => setIsDeleteModalOpen(false)}
+        />
+      )}
     </div>
   );
 };

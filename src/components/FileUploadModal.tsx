@@ -66,8 +66,12 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
   // Paste Directly State
   const [pasteTitle, setPasteTitle] = useState('');
   const [pasteContent, setPasteContent] = useState('');
-  const [pasteDescription, setPasteDescription] = useState('');
-  const [pasteError, setPasteError] = useState('');
+  // Sync targetProjectId whenever activeProjectId changes or modal is opened
+  React.useEffect(() => {
+    if (isOpen) {
+      setTargetProjectId(activeProjectId || null);
+    }
+  }, [isOpen, activeProjectId]);
 
   if (!isOpen) return null;
 
@@ -192,6 +196,12 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
           }
         }
 
+        if (!attachmentName) {
+          attachmentName = f.filename;
+          attachmentSize = f.file?.size;
+          attachmentType = f.file?.type || 'text/plain';
+        }
+
         await onSavePrompt({
           title: f.title,
           description: f.description,
@@ -233,6 +243,12 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
             } catch (uploadErr) {
               console.warn('Batch storage upload warning:', uploadErr);
             }
+          }
+
+          if (!attachmentName) {
+            attachmentName = f.filename;
+            attachmentSize = f.file?.size;
+            attachmentType = f.file?.type || 'text/plain';
           }
 
           batch.push({
@@ -366,6 +382,12 @@ export const FileUploadModal: React.FC<FileUploadModalProps> = ({
                 </option>
               ))}
             </select>
+            {targetProjectId && (
+              <p className="text-[10px] text-[#cc785c] mt-1 font-medium flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                <span>File akan tersimpan & tetap muncul di dalam proyek ini</span>
+              </p>
+            )}
           </div>
 
           <div>

@@ -150,27 +150,30 @@ export async function batchGetSignedUrls(
       .from(STORAGE_BUCKET)
       .createSignedUrls(uniquePaths, expiresInSeconds);
 
-    if (!error && Array.isArray(data)) {
+    if (!error && Array.isArray(data) && data.length > 0) {
       data.forEach((item) => {
-        if (item.path && item.signedUrl) {
-          results[item.path] = item.signedUrl;
+        const url = item.signedUrl || (item as any).signedURL;
+        if (item.path && url) {
+          results[item.path] = url;
         }
       });
-      return results;
     }
   } catch (e) {
     console.warn('batch createSignedUrls fallback to single calls', e);
   }
 
-  // Fallback to sequential/parallel individual calls if batch API is not available
-  await Promise.all(
-    uniquePaths.map(async (path) => {
-      const url = await getSignedUrl(path, expiresInSeconds);
-      if (url) {
-        results[path] = url;
-      }
-    })
-  );
+  // Fallback to sequential/parallel individual calls for any paths missing from batch
+  const missing = uniquePaths.filter((path) => !results[path]);
+  if (missing.length > 0) {
+    await Promise.all(
+      missing.map(async (path) => {
+        const url = await getSignedUrl(path, expiresInSeconds);
+        if (url) {
+          results[path] = url;
+        }
+      })
+    );
+  }
 
   return results;
 }

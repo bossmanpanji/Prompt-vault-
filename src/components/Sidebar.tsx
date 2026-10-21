@@ -23,6 +23,7 @@ import {
   User as UserIcon
 } from 'lucide-react';
 import { Project, PromptItem, ViewFilter, UserProfile } from '../types';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface SidebarProps {
   projects: Project[];
@@ -76,6 +77,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onLogout,
 }) => {
   const [projectMenuOpen, setProjectMenuOpen] = useState<string | null>(null);
+  const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const [tagsCollapsed, setTagsCollapsed] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
@@ -304,13 +306,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     </button>
 
                   {/* Project Context Menu button on hover */}
-                  <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute right-1.5 top-1/2 -translate-y-1/2 opacity-80 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setProjectMenuOpen(projectMenuOpen === proj.id ? null : proj.id);
                       }}
                       className="p-1 rounded text-[#84817a] hover:text-[#1f1e1d] dark:hover:text-[#f0eee6] hover:bg-black/5 dark:hover:bg-white/10"
+                      title="Menu Proyek"
                     >
                       <MoreVertical className="w-3 h-3" />
                     </button>
@@ -325,7 +328,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             setProjectMenuOpen(null);
                             onEditProject(proj);
                           }}
-                          className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#57554f] dark:text-[#bab6ab] hover:bg-[#faf9f5] dark:hover:bg-[#2a2926]"
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-[#57554f] dark:text-[#bab6ab] hover:bg-[#faf9f5] dark:hover:bg-[#2a2926] cursor-pointer"
                         >
                           <Pencil className="w-3 h-3" />
                           <span>Edit Proyek</span>
@@ -333,11 +336,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <button
                           onClick={() => {
                             setProjectMenuOpen(null);
-                            if (window.confirm(`Hapus proyek "${proj.name}"? Prompt di dalamnya tidak akan dihapus (hanya dilepas dari proyek).`)) {
-                              onDeleteProject(proj.id);
-                            }
+                            setProjectToDelete(proj);
                           }}
-                          className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20"
+                          className="w-full flex items-center gap-2 px-3 py-1.5 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 cursor-pointer"
                         >
                           <Trash2 className="w-3 h-3" />
                           <span>Hapus Proyek</span>
@@ -503,6 +504,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
     </aside>
+
+    {projectToDelete && (
+      <ConfirmDeleteModal
+        isOpen={!!projectToDelete}
+        title="Hapus Proyek"
+        itemName={projectToDelete.name}
+        description="Prompt di dalam proyek ini tidak akan dihapus, melainkan dipindahkan ke kategori 'Tanpa Proyek'. Sampul proyek (jika ada) akan dihapus dari Supabase Storage."
+        confirmLabel="Hapus Proyek"
+        onConfirm={() => {
+          if (projectToDelete) {
+            onDeleteProject(projectToDelete.id);
+            setProjectToDelete(null);
+          }
+        }}
+        onClose={() => setProjectToDelete(null)}
+      />
+    )}
   </>
   );
 };

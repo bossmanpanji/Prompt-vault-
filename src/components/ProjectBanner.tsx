@@ -10,14 +10,17 @@ import {
   ChevronDown, 
   ChevronUp, 
   Sparkles,
-  Info
+  Info,
+  Trash2
 } from 'lucide-react';
 import { Project, PromptItem } from '../types';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface ProjectBannerProps {
   project: Project;
   prompts: PromptItem[];
   onEditProject: () => void;
+  onDeleteProject?: (projectId: string) => void;
   onNewPromptInProject: () => void;
   onUploadInProject: () => void;
   onCopyText: (text: string, label: string) => void;
@@ -27,12 +30,14 @@ export const ProjectBanner: React.FC<ProjectBannerProps> = ({
   project,
   prompts,
   onEditProject,
+  onDeleteProject,
   onNewPromptInProject,
   onUploadInProject,
   onCopyText,
 }) => {
   const [instructionsExpanded, setInstructionsExpanded] = useState(false);
   const [copiedInstructions, setCopiedInstructions] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
 
   const handleCopyInstructions = () => {
     if (!project.customInstructions) return;
@@ -97,6 +102,16 @@ export const ProjectBanner: React.FC<ProjectBannerProps> = ({
               <Plus className="w-3.5 h-3.5" />
               <span>Tambah Prompt</span>
             </button>
+            {onDeleteProject && (
+              <button
+                onClick={() => setIsDeleteModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white dark:bg-[#282622] hover:bg-rose-50 dark:hover:bg-rose-950/30 border border-[#e5e3da] dark:border-[#363430] hover:border-rose-200 dark:hover:border-rose-900/50 text-rose-600 dark:text-rose-400 rounded-lg transition-colors cursor-pointer"
+                title="Hapus Proyek Ini"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Hapus</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -176,6 +191,20 @@ export const ProjectBanner: React.FC<ProjectBannerProps> = ({
           </div>
         )}
       </div>
+
+      <ConfirmDeleteModal
+        isOpen={isDeleteModalOpen}
+        title="Hapus Proyek"
+        itemName={project.name}
+        description="Prompt di dalam proyek ini tidak akan dihapus, melainkan dipindahkan ke kategori 'Tanpa Proyek'. Sampul proyek (jika ada) akan dihapus dari Supabase Storage."
+        confirmLabel="Hapus Proyek"
+        onConfirm={() => {
+          if (onDeleteProject) {
+            onDeleteProject(project.id);
+          }
+        }}
+        onClose={() => setIsDeleteModalOpen(false)}
+      />
     </div>
   );
 };
